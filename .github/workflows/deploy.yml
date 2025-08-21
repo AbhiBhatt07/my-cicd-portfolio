@@ -1,0 +1,96 @@
+name: CI/CD Pipeline
+
+# When to run this workflow
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Environment variables available to all jobs
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: my-portfolio-app
+
+jobs:
+  # Job 1: Build and Test
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    
+    steps:
+    # Step 1: Get the code
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    # Step 2: Configure AWS credentials
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    # Step 3: Login to Amazon ECR
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+    
+    # Step 4: Build Docker image
+    - name: Build Docker image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "Building Docker image..."
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+        echo "✅ Docker image built successfully!"
+    
+    # Step 5: Test the Docker image
+    - name: Test Docker image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "Testing Docker image..."
+        # Run container in background
+        docker run -d -p 8080:80 --name test-container $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        
+        # Wait for container to start
+        sleep 10
+        
+        # Test if website is accessible
+        if curl -f http://localhost:8080; then
+          echo "✅ Website is accessible!"
+        else
+          echo "❌ Website test failed!"
+          exit 1
+        fi
+        
+        # Stop test container
+        docker stop test-container
+        docker rm test-container
+    
+    # Step 6: Push to ECR
+    - name: Push Docker image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "Pushing Docker image to ECR..."
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        echo "✅ Image pushed to ECR successfully!"
+    
+    # Step 7: Output image details
+    - name: Output image info
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "🐳 Docker Image Details:"
+        echo "Registry: $ECR_REGISTRY"
+        echo "Repository: $ECR_REPOSITORY"
+        echo "Tag: $IMAGE_TAG"
+        echo "Full Image URI: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
