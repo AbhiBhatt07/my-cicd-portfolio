@@ -1,10 +1,10 @@
 # Use nginx as base image (lightweight web server)
-FROM nginx:apline
+FROM nginx:alpine
 
-# Copy the index.html file to nginx html directory
-COPY index.html /usr/share/nginx/html 
+# Copy our website files to nginx html directory
+COPY index.html /usr/share/nginx/html/
 
-# Expose port 80 (It's a standard port for web)
+# Expose port 80 (standard web port)
 EXPOSE 80
 
 # nginx starts automatically, so no CMD needed
